@@ -299,13 +299,6 @@ func (be *B2Ext) Store(e *external.External, key, file string) error {
 				// File already exists with correct data.
 				return nil
 			}
-
-			// File exists but is the incorrect data. Delete the old version
-			// first; B2 will keep the old version around otherwise.
-			_, err = be.bucket.DeleteFileVersion(be.prefix+key, b2file.ID)
-			if err != nil {
-				return fmt.Errorf("couldn't delete old file version: %v", err)
-			}
 		}
 	}
 
@@ -365,7 +358,7 @@ func (be *B2Ext) CheckPresent(e *external.External, key string) (bool, error) {
 }
 
 func (be *B2Ext) Remove(e *external.External, key string) error {
-	found, fileID, err := be.listFileCached(be.prefix + key)
+	found, _, err := be.listFileCached(be.prefix + key)
 	if err != nil {
 		return fmt.Errorf("couldn't list filenames: %v", err)
 	}
@@ -375,7 +368,7 @@ func (be *B2Ext) Remove(e *external.External, key string) error {
 		return nil
 	}
 
-	_, err = be.bucket.DeleteFileVersion(be.prefix+key, fileID)
+	_, err = be.bucket.HideFile(be.prefix + key)
 	be.clearListFileCache()
 	if err != nil {
 		return fmt.Errorf("couldn't delete file version: %v", err)
