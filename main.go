@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,14 @@ import (
 type B2Ext struct {
 	bucket *backblaze.Bucket
 	prefix string
+
+	cache struct {
+		filemap     map[string]string
+		enabled     bool
+		incomplete  bool
+		duration    time.Duration
+		timeWritten time.Time
+	}
 
 	lastList struct {
 		setAt time.Time
@@ -79,7 +88,47 @@ func getBucketConfig(e *external.External) (bucket string, prefix string, err er
 	return bucket, prefix, nil
 }
 
+func (be *B2Ext) initFileMap() (err error) {
+	be.cache.filemap = make(map[string]string)
+	nextfile := ""
+	for i := 0; i < 100; i++ {
+		response, err := be.bucket.ListFileNames(nextfile, 10000)
+		if err != nil {
+			return err
+		}
+		for _, file := range response.Files {
+			be.cache.filemap[file.Name] = file.ID
+		}
+		nextfile = response.NextFileName
+		if nextfile == "" {
+			break
+		}
+	}
+	be.cache.timeWritten = time.Now()
+	if nextfile != "" {
+		be.cache.incomplete = true
+	}
+	return nil
+}
+
 func (be *B2Ext) listFileCached(file string) (found bool, fileID string, err error) {
+	if be.cache.enabled {
+		if be.cache.filemap == nil || be.cache.duration != 0 && time.Since(be.cache.timeWritten) > be.cache.duration {
+			err = be.initFileMap()
+			if err != nil {
+				be.cache.filemap = nil
+				return false, "", err
+			}
+		}
+
+		if be.cache.filemap[file] != "" {
+			return true, be.cache.filemap[file], nil
+		}
+		if !be.cache.incomplete {
+			return false, "", nil
+		}
+	}
+
 	// Caching the last result of ListFileNames is no less safe than not caching
 	// it; the race condition of two concurrent git annex copy --to b2 processes
 	// sending the same file can result in a file with two identical versions in
@@ -155,6 +204,46 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 	be.bucket = bucket
 	be.prefix = prefix
 
+	s := os.Getenv("B2_CACHE_FILENAMES")
+	if s == "" {
+		s, err = e.GetConfig("cache-filenames")
+		if err != nil {
+			return err
+		}
+	}
+	if s == "" {
+		be.cache.enabled = false
+	} else {
+		be.cache.enabled, err = strconv.ParseBool(s)
+		if err != nil {
+			return err
+		}
+	}
+
+	s = os.Getenv("B2_CACHE_FILENAMES_DURATION")
+	if s == "" {
+		s, err = e.GetConfig("cache-filenames-duration")
+		if err != nil {
+			return err
+		}
+	}
+	if s == "" {
+		be.cache.duration = time.Duration(0)
+	} else {
+		n, err := strconv.Atoi(s)
+		if err == nil {
+			be.cache.duration = time.Duration(n) * time.Second
+		} else {
+			be.cache.duration, err = time.ParseDuration(s)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if be.cache.duration < 0 {
+		return errors.New("cache duration must be non-negative")
+	}
+
 	return nil
 }
 
@@ -210,13 +299,6 @@ func (be *B2Ext) Store(e *external.External, key, file string) error {
 				// File already exists with correct data.
 				return nil
 			}
-
-			// File exists but is the incorrect data. Delete the old version
-			// first; B2 will keep the old version around otherwise.
-			_, err = be.bucket.DeleteFileVersion(be.prefix+key, b2file.ID)
-			if err != nil {
-				return fmt.Errorf("couldn't delete old file version: %v", err)
-			}
 		}
 	}
 
@@ -225,7 +307,7 @@ func (be *B2Ext) Store(e *external.External, key, file string) error {
 		return fmt.Errorf("couldn't hash local file %v: %v", file, shaError)
 	}
 
-	_, err = be.bucket.UploadHashedFile(
+	b2file, err := be.bucket.UploadHashedFile(
 		be.prefix+key,
 		nil,
 		external.NewProgressReader(fh, e),
@@ -236,6 +318,8 @@ func (be *B2Ext) Store(e *external.External, key, file string) error {
 
 	if err != nil {
 		return fmt.Errorf("couldn't upload file: %v", err)
+	} else {
+		be.cache.filemap[b2file.Name] = b2file.ID
 	}
 
 	return nil
@@ -274,7 +358,7 @@ func (be *B2Ext) CheckPresent(e *external.External, key string) (bool, error) {
 }
 
 func (be *B2Ext) Remove(e *external.External, key string) error {
-	found, fileID, err := be.listFileCached(be.prefix + key)
+	found, _, err := be.listFileCached(be.prefix + key)
 	if err != nil {
 		return fmt.Errorf("couldn't list filenames: %v", err)
 	}
@@ -284,7 +368,7 @@ func (be *B2Ext) Remove(e *external.External, key string) error {
 		return nil
 	}
 
-	_, err = be.bucket.DeleteFileVersion(be.prefix+key, fileID)
+	_, err = be.bucket.HideFile(be.prefix + key)
 	be.clearListFileCache()
 	if err != nil {
 		return fmt.Errorf("couldn't delete file version: %v", err)
