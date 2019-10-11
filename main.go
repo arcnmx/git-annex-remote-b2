@@ -361,7 +361,9 @@ func (be *B2Ext) Store(e *external.External, key, file string) error {
 			return fmt.Errorf("couldn't upload file: %v", err)
 		} else {
 			be.clearListFileCache()
-			be.cache.filemap[b2file.Name] = b2file.ID
+			if be.cache.enabled {
+				be.cache.filemap[b2file.Name] = b2file.ID
+			}
 			break
 		}
 	}
