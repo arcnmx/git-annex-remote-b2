@@ -59,9 +59,18 @@ func authenticate(e *external.External) (*backblaze.B2, error) {
 		return nil, errors.New("You must set appkey to the backblaze application key")
 	}
 
+	keyID, err := e.GetConfig("appkeyid")
+	if err != nil {
+		return nil, err
+	}
+	if keyID == "" {
+		keyID = os.Getenv("B2_KEY_ID")
+	}
+
 	b2, err := backblaze.NewB2(backblaze.Credentials{
 		AccountID:      accountID,
 		ApplicationKey: appKey,
+		KeyID:          keyID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't authorize: %v", err)
