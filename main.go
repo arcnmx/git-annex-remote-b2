@@ -155,7 +155,7 @@ func (be *B2Ext) listFileCached(file string) (found bool, fileID string, err err
 		}
 
 		be.lastList.setAt = time.Now()
-		if len(res.Files) == 0 || res.Files[0].Name != file {
+		if len(res.Files) == 0 || res.Files[0].Name != file || res.Files[0].Action != backblaze.Upload {
 			be.lastList.file = file
 			be.lastList.found = false
 			be.lastList.id = ""
