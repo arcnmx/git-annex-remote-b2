@@ -19,6 +19,7 @@ import (
 type B2Ext struct {
 	bucket *backblaze.Bucket
 	prefix string
+	retries int
 
 	cache struct {
 		filemap     map[string]string
@@ -213,7 +214,25 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 	be.bucket = bucket
 	be.prefix = prefix
 
-	s := os.Getenv("B2_CACHE_FILENAMES")
+	s := os.Getenv("B2_RETRY_COUNT")
+	if s == "" {
+		s, err = e.GetConfig("retry-count")
+		if err != nil {
+			return err
+		}
+	}
+	if s == "" {
+		be.retries = 1
+	} else {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return err
+		} else {
+			be.retries = n
+		}
+	}
+
+	s = os.Getenv("B2_CACHE_FILENAMES")
 	if s == "" {
 		s, err = e.GetConfig("cache-filenames")
 		if err != nil {
@@ -316,19 +335,35 @@ func (be *B2Ext) Store(e *external.External, key, file string) error {
 		return fmt.Errorf("couldn't hash local file %v: %v", file, shaError)
 	}
 
-	b2file, err := be.bucket.UploadHashedFile(
-		be.prefix+key,
-		nil,
-		external.NewProgressReader(fh, e),
-		hex.EncodeToString(haveSHA),
-		contentLength)
+	for i := uint(0); i < uint(be.retries + 1); i++ {
+		b2file, err := be.bucket.UploadHashedFile(
+			be.prefix+key,
+			nil,
+			external.NewProgressReader(fh, e),
+			hex.EncodeToString(haveSHA),
+			contentLength)
 
-	be.clearListFileCache()
+		if b2err, ok := err.(*backblaze.B2Error); ok {
+			if b2err.IsFatal() {
+				return fmt.Errorf("couldn't upload file: %v", err)
+			} else {
+				wait := time.Duration(1 << i) * time.Second
+				e.Debug(fmt.Sprintf("upload failed, retrying in %v, error: %v", wait, err))
 
-	if err != nil {
-		return fmt.Errorf("couldn't upload file: %v", err)
-	} else {
-		be.cache.filemap[b2file.Name] = b2file.ID
+				_, err = fh.Seek(0, 0)
+				if err != nil {
+					return fmt.Errorf("couldn't retry upload: %v", err)
+				}
+
+				time.Sleep(wait)
+			}
+		} else if err != nil {
+			return fmt.Errorf("couldn't upload file: %v", err)
+		} else {
+			be.clearListFileCache()
+			be.cache.filemap[b2file.Name] = b2file.ID
+			break
+		}
 	}
 
 	return nil
