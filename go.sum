@@ -1,0 +1,11 @@
+github.com/arcnmx/go-git-annex-external v0.0.0-20200117023924-f82200704d42 h1:dJIAObz6WBzr8mPW0J+vsqOOBnvPOA8CiP11lFQGVQg=
+github.com/arcnmx/go-git-annex-external v0.0.0-20200117023924-f82200704d42/go.mod h1:cFuQNXUqrO/EluyQOd4PaDSWw8p3GPGpYzHyLqfrSjI=
+github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b h1:VKtxabqXZkF25pY9ekfRL6a582T4P37/31XEstQ5p58=
+github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
+github.com/google/readahead v0.0.0-20161222183148-eaceba169032 h1:6Be3nkuJFyRfCgr6qTIzmRp8y9QwDIbqy/nYr9WDPos=
+github.com/google/readahead v0.0.0-20161222183148-eaceba169032/go.mod h1:qYysrqQXuV4tzsizt4oOQ6mrBZQ0xnQXP3ylXX8Jk5Y=
+github.com/kothar/go-backblaze v0.0.0-20191215213626-7594ed38700f h1:K/PitPany3jiLzfNOSnfseYaaYlSPUyGZg1qZao+zyk=
+github.com/kothar/go-backblaze v0.0.0-20191215213626-7594ed38700f/go.mod h1:ZbK6ktV6cMKfyyaHAlDwPzYuPGaGF4KriGUyfDdBZ5c=
+github.com/pquerna/ffjson v0.0.0-20190930134022-aa0246cd15f7 h1:xoIK0ctDddBMnc74udxJYBqlo9Ylnsp1waqjLsnef20=
+github.com/pquerna/ffjson v0.0.0-20190930134022-aa0246cd15f7/go.mod h1:YARuvh7BUWHNhzDq2OM5tzR2RiCcN2D7sapiKyCel/M=
+gopkg.in/kothar/go-backblaze.v0 v0.0.0-20191215213626-7594ed38700f/go.mod h1:zJ2QpyDCYo1KvLXlmdnFlQAyF/Qfth0fB8239Qg7BIE=
