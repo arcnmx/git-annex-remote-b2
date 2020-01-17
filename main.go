@@ -93,7 +93,7 @@ func getConfig(e *external.External) (config configValues, err error) {
 		config.accountID, err = e.GetConfig("accountid")
 	}
 	if config.accountID == "" && err == nil {
-		config.accountID, bucketCred, err = e.GetCreds("accountid")
+		config.accountID, bucketCred, err = e.GetCreds("b2_account")
 		hasBucketCred = true
 	}
 	if err != nil {
@@ -113,7 +113,7 @@ func getConfig(e *external.External) (config configValues, err error) {
 		}
 	}
 	if config.appKey == "" && err == nil {
-		config.keyID, config.appKey, err = e.GetCreds("appkey")
+		config.keyID, config.appKey, err = e.GetCreds("b2_appkey")
 	}
 	if err != nil {
 		return
@@ -129,7 +129,7 @@ func getConfig(e *external.External) (config configValues, err error) {
 	}
 	if config.bucketName == "" && err == nil {
 		if !hasBucketCred {
-			_, bucketCred, err = e.GetCreds("accountid")
+			_, bucketCred, err = e.GetCreds("b2_account")
 		}
 		if err == nil {
 			config.bucketName = bucketCred
@@ -320,12 +320,12 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 	be.prefix = config.prefix
 
 	if canCreateBucket {
-		err = e.SetCreds("accountid", config.accountID, config.bucketName)
+		err = e.SetCreds("b2_account", config.accountID, config.bucketName)
 		if err != nil {
 			return err
 		}
 
-		err = e.SetCreds("appkey", config.keyID, config.appKey)
+		err = e.SetCreds("b2_appkey", config.keyID, config.appKey)
 		if err != nil {
 			return err
 		}
