@@ -448,7 +448,12 @@ func (be *B2Ext) GetAvailability(e *external.External) (external.Availability, e
 }
 
 func (be *B2Ext) WhereIs(e *external.External, key string) (string, error) {
-	return "", external.ErrUnsupportedRequest
+	if be.bucket.BucketType == backblaze.AllPublic {
+		// this generally shouldn't touch the network but might if auth is invalidated :(
+		return be.bucket.FileURL(be.prefix + key)
+	} else {
+		return "", nil
+	}
 }
 
 func main() {
