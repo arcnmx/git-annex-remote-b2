@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/encryptio/go-git-annex-external/external"
+	"github.com/arcnmx/go-git-annex-external/external"
 	"github.com/kothar/go-backblaze"
 )
 
@@ -49,7 +49,11 @@ func authenticate(e *external.External) (*backblaze.B2, error) {
 		return nil, errors.New("You must set accountid to the backblaze account id")
 	}
 
-	appKey, err := e.GetConfig("appkey")
+	keyID, appKey, err := e.GetCreds("appkey")
+
+	if appKey == "" && err == nil {
+		appKey, err = e.GetConfig("appkey")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +64,9 @@ func authenticate(e *external.External) (*backblaze.B2, error) {
 		return nil, errors.New("You must set appkey to the backblaze application key")
 	}
 
-	keyID, err := e.GetConfig("appkeyid")
+	if keyID == "" && err == nil {
+		appKey, err = e.GetConfig("appkeyid")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -270,6 +276,16 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 	}
 	if be.cache.duration < 0 {
 		return errors.New("cache duration must be non-negative")
+	}
+
+	err = e.SetConfig("accountid", b2.AccountID)
+	if err != nil {
+		return err
+	}
+
+	err = e.SetCreds("appkey", b2.KeyID, b2.ApplicationKey)
+	if err != nil {
+		return err
 	}
 
 	return nil
