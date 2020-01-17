@@ -46,6 +46,7 @@ type configValues struct {
 	retryCount string
 	cacheFilenames string
 	cacheFilesnamesDuration string
+	canSetCreds bool
 }
 
 func authenticate(e *external.External, accountID string, appKey string, keyID string) (*backblaze.B2, error) {
@@ -111,6 +112,8 @@ func getConfig(e *external.External) (config configValues, err error) {
 		if err == nil {
 			config.keyID, err = e.GetConfig("appkeyid")
 		}
+	} else {
+		config.canSetCreds = true
 	}
 	if config.appKey == "" && err == nil {
 		config.keyID, config.appKey, err = e.GetCreds("b2_appkey")
@@ -319,7 +322,7 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 	be.bucket = bucket
 	be.prefix = config.prefix
 
-	if canCreateBucket {
+	if config.canSetCreds && canCreateBucket {
 		err = e.SetCreds("b2_account", config.accountID, config.bucketName)
 		if err != nil {
 			return err
