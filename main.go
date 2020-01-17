@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/encryptio/go-git-annex-external/external"
-	"gopkg.in/kothar/go-backblaze.v0"
+	"github.com/kothar/go-backblaze"
 )
 
 type B2Ext struct {
