@@ -37,43 +37,18 @@ type B2Ext struct {
 	}
 }
 
-func authenticate(e *external.External) (*backblaze.B2, error) {
-	accountID, err := e.GetConfig("accountid")
-	if err != nil {
-		return nil, err
-	}
-	if accountID == "" {
-		accountID = os.Getenv("B2_ACCOUNT_ID")
-	}
-	if accountID == "" {
-		return nil, errors.New("You must set accountid to the backblaze account id")
-	}
+type configValues struct {
+	accountID string
+	appKey string
+	keyID string
+	bucketName string
+	prefix string
+	retryCount string
+	cacheFilenames string
+	cacheFilesnamesDuration string
+}
 
-	keyID, appKey, err := e.GetCreds("appkey")
-
-	if appKey == "" && err == nil {
-		appKey, err = e.GetConfig("appkey")
-	}
-	if err != nil {
-		return nil, err
-	}
-	if appKey == "" {
-		appKey = os.Getenv("B2_APP_KEY")
-	}
-	if appKey == "" {
-		return nil, errors.New("You must set appkey to the backblaze application key")
-	}
-
-	if keyID == "" && err == nil {
-		appKey, err = e.GetConfig("appkeyid")
-	}
-	if err != nil {
-		return nil, err
-	}
-	if keyID == "" {
-		keyID = os.Getenv("B2_KEY_ID")
-	}
-
+func authenticate(e *external.External, accountID string, appKey string, keyID string) (*backblaze.B2, error) {
 	b2, err := backblaze.NewB2(backblaze.Credentials{
 		AccountID:      accountID,
 		ApplicationKey: appKey,
@@ -86,22 +61,119 @@ func authenticate(e *external.External) (*backblaze.B2, error) {
 	return b2, nil
 }
 
-func getBucketConfig(e *external.External) (bucket string, prefix string, err error) {
-	bucket, err = e.GetConfig("bucket")
+func openBucket(b2 *backblaze.B2, bucketName string, canCreateBucket bool) (*backblaze.Bucket, error) {
+	bucket, err := b2.Bucket(bucketName)
 	if err != nil {
-		return "", "", err
-	}
-	if bucket == "" {
-		return "", "", errors.New("You must set bucket to the bucket name")
+		return nil, fmt.Errorf("couldn't open bucket %#v: %v", bucketName, err)
 	}
 
-	prefix, err = e.GetConfig("prefix")
+	if bucket == nil {
+		if !canCreateBucket {
+			return nil, fmt.Errorf("bucket %#v does not exist anymore", bucketName)
+		}
+
+		fmt.Fprintf(os.Stderr, "Creating private B2 bucket %#v\n", bucketName)
+
+		bucket, err = b2.CreateBucket(bucketName, backblaze.AllPrivate)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't create bucket %#v: %v", bucketName, err)
+		}
+	}
+
+	return bucket, err
+}
+
+func getConfig(e *external.External) (config configValues, err error) {
+	config = configValues{}
+
+	bucketCred := ""
+	hasBucketCred := false
+	config.accountID, err = os.Getenv("B2_ACCOUNT_ID"), nil
+	if config.accountID == "" {
+		config.accountID, err = e.GetConfig("accountid")
+	}
+	if config.accountID == "" && err == nil {
+		config.accountID, bucketCred, err = e.GetCreds("accountid")
+		hasBucketCred = true
+	}
+	if err != nil {
+		return
+	}
+	if config.accountID == "" {
+		err = errors.New("You must set B2_ACCOUNT_ID to the backblaze account id")
+		return
+	}
+
+	config.keyID, config.appKey = os.Getenv("B2_KEY_ID"), os.Getenv("B2_APP_KEY")
+
+	if config.appKey == "" {
+		config.appKey, err = e.GetConfig("appkey")
+		if err == nil {
+			config.keyID, err = e.GetConfig("appkeyid")
+		}
+	}
+	if config.appKey == "" && err == nil {
+		config.keyID, config.appKey, err = e.GetCreds("appkey")
+	}
+	if err != nil {
+		return
+	}
+	if config.appKey == "" {
+		err = errors.New("You must set B2_APP_KEY to the backblaze application key")
+		return
+	}
+
+	config.bucketName = os.Getenv("B2_BUCKET")
+	if config.bucketName == "" {
+		config.bucketName, err = e.GetConfig("bucket")
+	}
+	if config.bucketName == "" && err == nil {
+		if !hasBucketCred {
+			_, bucketCred, err = e.GetCreds("accountid")
+		}
+		if err == nil {
+			config.bucketName = bucketCred
+		}
+	}
+	if err != nil {
+		return
+	}
+	if config.bucketName == "" {
+		err = errors.New("You must set bucket to the bucket name")
+		return
+	}
+
+	config.prefix, err = e.GetConfig("prefix")
 	// prefix == "" is ok.
-	if prefix != "" && !strings.HasSuffix(prefix, "/") {
-		prefix = prefix + "/"
+	if config.prefix != "" && !strings.HasSuffix(config.prefix, "/") {
+		config.prefix = config.prefix + "/"
 	}
 
-	return bucket, prefix, nil
+	config.retryCount = os.Getenv("B2_RETRY_COUNT")
+	if config.retryCount == "" {
+		config.retryCount, err = e.GetConfig("retry-count")
+	}
+	if err != nil {
+		return
+	}
+
+	config.cacheFilenames = os.Getenv("B2_CACHE_FILENAMES")
+	if config.cacheFilenames == "" {
+		config.cacheFilenames, err = e.GetConfig("cache-filenames")
+	}
+	if err != nil {
+		return
+	}
+
+	config.cacheFilesnamesDuration = os.Getenv("B2_CACHE_FILENAMES_DURATION")
+	if config.cacheFilesnamesDuration == "" {
+		config.cacheFilesnamesDuration, err = e.GetConfig("cache-filenames-duration")
+	}
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 func (be *B2Ext) initFileMap() (err error) {
@@ -189,44 +261,12 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 		return nil
 	}
 
-	b2, err := authenticate(e)
+	config, err := getConfig(e)
 	if err != nil {
 		return err
 	}
 
-	bucketName, prefix, err := getBucketConfig(e)
-	if err != nil {
-		return err
-	}
-
-	bucket, err := b2.Bucket(bucketName)
-	if err != nil {
-		return fmt.Errorf("couldn't open bucket %#v: %v", bucketName, err)
-	}
-
-	if bucket == nil {
-		if !canCreateBucket {
-			return fmt.Errorf("bucket %#v does not exist anymore", bucketName)
-		}
-
-		fmt.Fprintf(os.Stderr, "Creating private B2 bucket %#v\n", bucketName)
-
-		bucket, err = b2.CreateBucket(bucketName, backblaze.AllPrivate)
-		if err != nil {
-			return fmt.Errorf("couldn't create bucket %#v: %v", bucketName, err)
-		}
-	}
-
-	be.bucket = bucket
-	be.prefix = prefix
-
-	s := os.Getenv("B2_RETRY_COUNT")
-	if s == "" {
-		s, err = e.GetConfig("retry-count")
-		if err != nil {
-			return err
-		}
-	}
+	s := config.retryCount
 	if s == "" {
 		be.retries = 1
 	} else {
@@ -238,13 +278,7 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 		}
 	}
 
-	s = os.Getenv("B2_CACHE_FILENAMES")
-	if s == "" {
-		s, err = e.GetConfig("cache-filenames")
-		if err != nil {
-			return err
-		}
-	}
+	s = config.cacheFilenames
 	if s == "" {
 		be.cache.enabled = false
 	} else {
@@ -254,13 +288,7 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 		}
 	}
 
-	s = os.Getenv("B2_CACHE_FILENAMES_DURATION")
-	if s == "" {
-		s, err = e.GetConfig("cache-filenames-duration")
-		if err != nil {
-			return err
-		}
-	}
+	s = config.cacheFilesnamesDuration
 	if s == "" {
 		be.cache.duration = time.Duration(0)
 	} else {
@@ -278,14 +306,29 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 		return errors.New("cache duration must be non-negative")
 	}
 
-	err = e.SetConfig("accountid", b2.AccountID)
+	b2, err := authenticate(e, config.accountID, config.appKey, config.keyID)
 	if err != nil {
 		return err
 	}
 
-	err = e.SetCreds("appkey", b2.KeyID, b2.ApplicationKey)
+	bucket, err := openBucket(b2, config.bucketName, canCreateBucket)
 	if err != nil {
 		return err
+	}
+
+	be.bucket = bucket
+	be.prefix = config.prefix
+
+	if canCreateBucket {
+		err = e.SetCreds("accountid", config.accountID, config.bucketName)
+		if err != nil {
+			return err
+		}
+
+		err = e.SetCreds("appkey", config.keyID, config.appKey)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
