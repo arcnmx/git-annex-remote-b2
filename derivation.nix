@@ -23,7 +23,7 @@
       /.github/
     '' ] ./.;
 
-    modSha256 = "0565nvb6gq90i1ypv08rq41ivf04xqa3pw3hvl7208vdxzmn9ry2";
+    modSha256 = "0xdmiwfkj84rh81w5wkd8cnvg0vsv5jv748l5ggj038bq0hmvrp2";
   } // optionalAttrs enableStatic {
     CGO_ENABLED = "0";
 

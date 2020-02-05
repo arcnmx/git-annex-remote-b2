@@ -45,7 +45,7 @@ type configValues struct {
 	prefix string
 	retryCount string
 	cacheFilenames string
-	cacheFilesnamesDuration string
+	cacheFilenamesDuration string
 	canSetCreds bool
 }
 
@@ -168,9 +168,9 @@ func getConfig(e *external.External) (config configValues, err error) {
 		return
 	}
 
-	config.cacheFilesnamesDuration = os.Getenv("B2_CACHE_FILENAMES_DURATION")
-	if config.cacheFilesnamesDuration == "" {
-		config.cacheFilesnamesDuration, err = e.GetConfig("cache-filenames-duration")
+	config.cacheFilenamesDuration = os.Getenv("B2_CACHE_FILENAMES_DURATION")
+	if config.cacheFilenamesDuration == "" {
+		config.cacheFilenamesDuration, err = e.GetConfig("cache-filenames-duration")
 	}
 	if err != nil {
 		return
@@ -291,7 +291,7 @@ func (be *B2Ext) setup(e *external.External, canCreateBucket bool) error {
 		}
 	}
 
-	s = config.cacheFilesnamesDuration
+	s = config.cacheFilenamesDuration
 	if s == "" {
 		be.cache.duration = time.Duration(0)
 	} else {
@@ -500,6 +500,73 @@ func (be *B2Ext) WhereIs(e *external.External, key string) (string, error) {
 	} else {
 		return "", nil
 	}
+}
+
+func (be *B2Ext) ListConfigs(e *external.External) ([]external.Config, error) {
+	res := []external.Config {
+		external.Config {
+			Name: "bucket",
+			Description: "B2 bucket name where files are placed (or B2_BUCKET environment variable)",
+		},
+		external.Config {
+			Name: "prefix",
+			Description: "Object key prefix used when naming files in the bucket. A slash is appended in order to simulate a directory name.",
+		},
+		external.Config {
+			Name: "retry-count",
+			Description: "Amount of times to retry an upload (or B2_RETRY_COUNT environment variable)",
+		},
+		external.Config {
+			Name: "cache-filenames",
+			Description: "Set to 1 or true to enable the filename cache (or B2_CACHE_FILENAMES environment variable)",
+		},
+		external.Config {
+			Name: "cache-filenames-duration",
+			Description: "Amount of seconds to consider the cache valid for, defaults to 0 and never expires (or B2_CACHE_FILENAMES_DURATION environment variable)",
+		},
+	}
+
+	return res, nil
+}
+
+func (be *B2Ext) ClaimUrl(e *external.External, url string) (bool, error) {
+	// TODO: support this?
+	return false, external.ErrUnsupportedRequest
+}
+
+func (be *B2Ext) CheckUrl(e *external.External, url string) ([]external.CheckUrl, error) {
+	// TODO: support this?
+	return nil, external.ErrUnsupportedRequest
+}
+
+func (be *B2Ext) GetInfo(e *external.External) ([]external.Info, error) {
+	res := []external.Info {
+		external.Info {
+			Name: "account-id",
+			Value: be.bucket.AccountID,
+		},
+		external.Info {
+			Name: "bucket",
+			Value: be.bucket.Name,
+		},
+		external.Info {
+			Name: "bucket-id",
+			Value: be.bucket.ID,
+		},
+		external.Info {
+			Name: "prefix",
+			Value: be.prefix,
+		},
+	}
+	return res, nil
+}
+
+func (be *B2Ext) Extensions(e *external.External, extensions []string) ([]string, error) {
+	return nil, external.ErrUnsupportedRequest
+}
+
+func (be *B2Ext) Unhandled(e *external.External, request string, fields string) error {
+	return external.ErrUnsupportedRequest
 }
 
 func main() {
